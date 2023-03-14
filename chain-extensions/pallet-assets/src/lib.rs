@@ -29,7 +29,6 @@ use pallet_assets::WeightInfo;
 use pallet_contracts::chain_extension::{
     ChainExtension, Environment, Ext, InitState, RetVal, SysConfig,
 };
-use sp_core::Get;
 use sp_runtime::traits::StaticLookup;
 use sp_runtime::DispatchError;
 use sp_std::marker::PhantomData;
@@ -50,10 +49,6 @@ enum AssetsFunc {
     MetadataName,
     MetadataSymbol,
     MetadataDecimals,
-    StartDestroy,
-    DestroyAccounts,
-    DestroyApprovals,
-    FinishDestroy,
     TransferOwnership,
 }
 
@@ -76,11 +71,7 @@ impl TryFrom<u16> for AssetsFunc {
             12 => Ok(AssetsFunc::MetadataName),
             13 => Ok(AssetsFunc::MetadataSymbol),
             14 => Ok(AssetsFunc::MetadataDecimals),
-            15 => Ok(AssetsFunc::StartDestroy),
-            16 => Ok(AssetsFunc::DestroyAccounts),
-            17 => Ok(AssetsFunc::DestroyApprovals),
-            18 => Ok(AssetsFunc::FinishDestroy),
-            19 => Ok(AssetsFunc::TransferOwnership),
+            15 => Ok(AssetsFunc::TransferOwnership),
             _ => Err(DispatchError::Other(
                 "PalletAssetsExtension: Unimplemented func_id",
             )),
@@ -391,94 +382,6 @@ where
 
                 let decimals = pallet_assets::Pallet::<T>::decimals(&id);
                 env.write(&decimals.encode(), false, None)?;
-            }
-            AssetsFunc::StartDestroy => {
-                let (origin, id): (Origin, <T as pallet_assets::Config>::AssetId) =
-                    env.read_as_unbounded(env.in_len())?;
-
-                let base_weight = <T as pallet_assets::Config>::WeightInfo::start_destroy();
-                env.charge_weight(base_weight)?;
-
-                let raw_origin = select_origin!(&origin, env.ext().address().clone());
-
-                let call_result =
-                    pallet_assets::Pallet::<T>::start_destroy(raw_origin.into(), id.into());
-                return match call_result {
-                    Err(e) => {
-                        let mapped_error = Outcome::from(e);
-                        Ok(RetVal::Converging(mapped_error as u32))
-                    }
-                    Ok(_) => Ok(RetVal::Converging(Outcome::Success as u32)),
-                };
-            }
-            AssetsFunc::DestroyAccounts => {
-                let (origin, id): (Origin, <T as pallet_assets::Config>::AssetId) =
-                    env.read_as_unbounded(env.in_len())?;
-
-                let base_weight = <W as weights::WeightInfo>::remove_items_limit();
-                env.charge_weight(base_weight)?;
-
-                let remove_items_limit = T::RemoveItemsLimit::get();
-
-                let base_weight =
-                    <T as pallet_assets::Config>::WeightInfo::destroy_accounts(remove_items_limit);
-                env.charge_weight(base_weight)?;
-
-                let raw_origin = select_origin!(&origin, env.ext().address().clone());
-
-                let call_result =
-                    pallet_assets::Pallet::<T>::destroy_accounts(raw_origin.into(), id.into());
-                return match call_result {
-                    Err(e) => {
-                        let mapped_error = Outcome::from(e.error);
-                        Ok(RetVal::Converging(mapped_error as u32))
-                    }
-                    Ok(_) => Ok(RetVal::Converging(Outcome::Success as u32)),
-                };
-            }
-            AssetsFunc::DestroyApprovals => {
-                let (origin, id): (Origin, <T as pallet_assets::Config>::AssetId) =
-                    env.read_as_unbounded(env.in_len())?;
-
-                let base_weight = <W as weights::WeightInfo>::remove_items_limit();
-                env.charge_weight(base_weight)?;
-
-                let remove_items_limit = T::RemoveItemsLimit::get();
-
-                let base_weight =
-                    <T as pallet_assets::Config>::WeightInfo::destroy_approvals(remove_items_limit);
-                env.charge_weight(base_weight)?;
-
-                let raw_origin = select_origin!(&origin, env.ext().address().clone());
-
-                let call_result =
-                    pallet_assets::Pallet::<T>::destroy_approvals(raw_origin.into(), id.into());
-                return match call_result {
-                    Err(e) => {
-                        let mapped_error = Outcome::from(e.error);
-                        Ok(RetVal::Converging(mapped_error as u32))
-                    }
-                    Ok(_) => Ok(RetVal::Converging(Outcome::Success as u32)),
-                };
-            }
-            AssetsFunc::FinishDestroy => {
-                let (origin, id): (Origin, <T as pallet_assets::Config>::AssetId) =
-                    env.read_as_unbounded(env.in_len())?;
-
-                let base_weight = <T as pallet_assets::Config>::WeightInfo::finish_destroy();
-                env.charge_weight(base_weight)?;
-
-                let raw_origin = select_origin!(&origin, env.ext().address().clone());
-
-                let call_result =
-                    pallet_assets::Pallet::<T>::finish_destroy(raw_origin.into(), id.into());
-                return match call_result {
-                    Err(e) => {
-                        let mapped_error = Outcome::from(e);
-                        Ok(RetVal::Converging(mapped_error as u32))
-                    }
-                    Ok(_) => Ok(RetVal::Converging(Outcome::Success as u32)),
-                };
             }
             AssetsFunc::TransferOwnership => {
                 let (origin, id, owner): (
