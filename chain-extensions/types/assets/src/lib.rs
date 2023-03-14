@@ -116,3 +116,13 @@ impl Default for Origin {
         Self::Address
     }
 }
+
+#[macro_export]
+macro_rules! select_origin {
+    ($origin:expr, $account:expr) => {
+        match $origin {
+            Origin::Caller => return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32)),
+            Origin::Address => RawOrigin::Signed($account),
+        }
+    };
+}

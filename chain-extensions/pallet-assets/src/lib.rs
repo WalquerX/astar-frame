@@ -20,7 +20,7 @@
 
 pub mod weights;
 
-use assets_chain_extension_types::{Origin, Outcome};
+use assets_chain_extension_types::{select_origin, Origin, Outcome};
 use codec::Encode;
 use frame_support::traits::fungibles::InspectMetadata;
 use frame_support::traits::tokens::fungibles::approvals::Inspect;
@@ -123,12 +123,7 @@ where
                 let base_weight = <T as pallet_assets::Config>::WeightInfo::create();
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result = pallet_assets::Pallet::<T>::create(
                     raw_origin.into(),
@@ -155,12 +150,7 @@ where
                 let base_weight = <T as pallet_assets::Config>::WeightInfo::transfer();
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result = pallet_assets::Pallet::<T>::transfer(
                     raw_origin.into(),
@@ -187,12 +177,7 @@ where
                 let base_weight = <T as pallet_assets::Config>::WeightInfo::mint();
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result = pallet_assets::Pallet::<T>::mint(
                     raw_origin.into(),
@@ -219,12 +204,7 @@ where
                 let base_weight = <T as pallet_assets::Config>::WeightInfo::burn();
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result = pallet_assets::Pallet::<T>::burn(
                     raw_origin.into(),
@@ -283,12 +263,7 @@ where
                 let base_weight = <T as pallet_assets::Config>::WeightInfo::approve_transfer();
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result = pallet_assets::Pallet::<T>::approve_transfer(
                     raw_origin.into(),
@@ -314,12 +289,7 @@ where
                 let base_weight = <T as pallet_assets::Config>::WeightInfo::cancel_approval();
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result = pallet_assets::Pallet::<T>::cancel_approval(
                     raw_origin.into(),
@@ -346,12 +316,7 @@ where
                 let base_weight = <T as pallet_assets::Config>::WeightInfo::transfer_approved();
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result = pallet_assets::Pallet::<T>::transfer_approved(
                     raw_origin.into(),
@@ -383,12 +348,7 @@ where
                 );
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result = pallet_assets::Pallet::<T>::set_metadata(
                     raw_origin.into(),
@@ -439,12 +399,7 @@ where
                 let base_weight = <T as pallet_assets::Config>::WeightInfo::start_destroy();
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result =
                     pallet_assets::Pallet::<T>::start_destroy(raw_origin.into(), id.into());
@@ -469,12 +424,7 @@ where
                     <T as pallet_assets::Config>::WeightInfo::destroy_accounts(remove_items_limit);
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result =
                     pallet_assets::Pallet::<T>::destroy_accounts(raw_origin.into(), id.into());
@@ -499,12 +449,7 @@ where
                     <T as pallet_assets::Config>::WeightInfo::destroy_approvals(remove_items_limit);
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result =
                     pallet_assets::Pallet::<T>::destroy_approvals(raw_origin.into(), id.into());
@@ -523,12 +468,7 @@ where
                 let base_weight = <T as pallet_assets::Config>::WeightInfo::finish_destroy();
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result =
                     pallet_assets::Pallet::<T>::finish_destroy(raw_origin.into(), id.into());
@@ -550,12 +490,7 @@ where
                 let base_weight = <T as pallet_assets::Config>::WeightInfo::transfer_ownership();
                 env.charge_weight(base_weight)?;
 
-                let raw_origin = match origin {
-                    Origin::Caller => {
-                        return Ok(RetVal::Converging(Outcome::OriginCannotBeCaller as u32))
-                    }
-                    Origin::Address => RawOrigin::Signed(env.ext().address().clone()),
-                };
+                let raw_origin = select_origin!(&origin, env.ext().address().clone());
 
                 let call_result = pallet_assets::Pallet::<T>::transfer_ownership(
                     raw_origin.into(),
