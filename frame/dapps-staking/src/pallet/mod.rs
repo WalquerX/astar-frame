@@ -1025,6 +1025,7 @@ pub mod pallet {
             contract_id: T::SmartContract,
             new_delegate: T::AccountId,
         ) -> DispatchResult {
+            Self::ensure_pallet_enabled()?;
             let caller = ensure_signed(origin)?;
 
             let current_delegate = RewardDelegate::<T>::get(&staker, &contract_id);
@@ -1063,6 +1064,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             contract_id: T::SmartContract,
         ) -> DispatchResult {
+            Self::ensure_pallet_enabled()?;
             let caller = ensure_signed(origin)?;
 
             // Ensure there is a delegate set for the staker
