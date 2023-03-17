@@ -180,6 +180,20 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    /// To store the reward delegates.
+    // Using a separate RewardDelegate storage item allow to store 
+    // the delegate info once for each (reward owner, contract) pair,
+    // which is more storage-efficient. It also keeps modularity.
+    #[pallet::storage]
+    pub type RewardDelegate<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        T::AccountId, // Reward owner's account ID
+        Twox64Concat,
+        T::SmartContract, // Contract ID
+        T::AccountId, // Reward delegate's account ID
+    >;
+
     /// Stores the current pallet storage version.
     #[pallet::storage]
     #[pallet::getter(fn storage_version)]
@@ -233,6 +247,10 @@ pub mod pallet {
             BalanceOf<T>,
             T::SmartContract,
         ),
+        /// Reward delegate has been set.
+        RewardDelegateSet(T::AccountId, T::SmartContract, T::AccountId),
+        /// Reward delegate has been revoked.
+        RewardDelegateRevoked(T::AccountId, T::SmartContract),
     }
 
     #[pallet::error]
@@ -291,6 +309,15 @@ pub mod pallet {
         NotActiveStaker,
         /// Transfering nomination to the same contract
         NominationTransferToSameContract,
+        /// Only staker or current delegate account can delegate reward
+        NotAuthorizedToDelegate,
+        /// Reward is already delegated to the account
+        AlreadyDelegated,
+        /// Can not set reward delegate if rewards are set to be re staked
+        RewardDestinationStakeBalance,
+        /// There is no reward delegate set
+        NoDelegateSet,
+
     }
 
     #[pallet::hooks]
@@ -705,6 +732,7 @@ pub mod pallet {
         }
 
         // TODO: do we need to add force methods or at least methods that allow others to claim for someone else?
+        // TODO: check bechmarking changes because added delegate logic
 
         /// Claim earned staker rewards for the oldest unclaimed era.
         /// In order to claim multiple eras, this call has to be called multiple times.
@@ -797,10 +825,19 @@ pub mod pallet {
                 ));
             }
 
-            T::Currency::resolve_creating(&staker, reward_imbalance);
-            Self::update_staker_info(&staker, &contract_id, staker_info);
-            Self::deposit_event(Event::<T>::Reward(staker, contract_id, era, staker_reward));
+            if let Some(delegate) = RewardDelegate::<T>::get(&staker, &contract_id) {
+                // reward to the delegate
+                T::Currency::resolve_creating(&delegate, reward_imbalance);
+                Self::deposit_event(Event::<T>::Reward(delegate, contract_id.clone(), era, staker_reward));
 
+            } else {
+                // reward to the staker
+                T::Currency::resolve_creating(&staker, reward_imbalance);
+                Self::deposit_event(Event::<T>::Reward(staker.clone(), contract_id.clone(), era, staker_reward));
+            }
+
+            Self::update_staker_info(&staker, &contract_id, staker_info);
+            
             Ok(Some(if should_restake_reward {
                 T::WeightInfo::claim_staker_with_restake()
             } else {
@@ -977,6 +1014,68 @@ pub mod pallet {
             ContractEraStake::<T>::insert(contract, era, contract_stake_info);
 
             Ok(().into())
+        }
+
+        // TODO: handle case when auto restaking is enabled
+        // TODO: handle case when staker wants to regain control of their stake rewards
+        #[pallet::weight(0)]
+        pub fn set_reward_delegate(
+            origin: OriginFor<T>,
+            staker: T::AccountId, // the caller must be the staker or the current delegate
+            contract_id: T::SmartContract,
+            new_delegate: T::AccountId,
+        ) -> DispatchResult {
+            let caller = ensure_signed(origin)?;
+
+            let current_delegate = RewardDelegate::<T>::get(&staker, &contract_id);
+
+            // Check the caller is the staker or the current delegate
+            ensure!(
+                caller == staker || current_delegate == Some(caller),
+                Error::<T>::NotAuthorizedToDelegate
+            );
+
+            // Ensure the staker does not have reward destination set to StakeBalance
+            let ledger = Self::ledger(&staker);
+            ensure!(
+                ledger.reward_destination != RewardDestination::StakeBalance,
+                Error::<T>::RewardDestinationStakeBalance
+            );
+
+            // if current delegate is set, then new delegate must be different
+            if let Some(current_delegate) = current_delegate {
+                ensure!(
+                    new_delegate != current_delegate,
+                    Error::<T>::AlreadyDelegated
+                );
+            }
+
+            RewardDelegate::<T>::insert(&staker, &contract_id, &new_delegate);
+
+            Self::deposit_event(Event::<T>::RewardDelegateSet(staker, contract_id, new_delegate));
+
+            Ok(())
+        }
+
+        // Function for the staker to revoke their reward delegation
+        #[pallet::weight(0)]
+        pub fn revoke_reward_delegate(
+            origin: OriginFor<T>,
+            contract_id: T::SmartContract,
+        ) -> DispatchResult {
+            let caller = ensure_signed(origin)?;
+
+            // Ensure there is a delegate set for the staker
+            ensure!(
+                RewardDelegate::<T>::contains_key(&caller, &contract_id),
+                Error::<T>::NoDelegateSet
+            );
+
+            RewardDelegate::<T>::remove(&caller, &contract_id);
+
+            Self::deposit_event(Event::<T>::RewardDelegateRevoked(caller, contract_id));
+
+            Ok(())
         }
     }
 
