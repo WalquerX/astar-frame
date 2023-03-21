@@ -65,9 +65,7 @@ pub(crate) fn assert_register(developer: AccountId, contract_id: &MockSmartContr
 
     // Contract shouldn't exist.
     assert!(!RegisteredDapps::<TestRuntime>::contains_key(contract_id));
-    assert!(!RegisteredDevelopers::<TestRuntime>::contains_key(
-        developer
-    ));
+    assert!(!RegisteredDevelopers::<TestRuntime>::contains_key(developer));
 
     // Verify op is successful
     assert_ok!(DappsStaking::enable_developer_pre_approval(
@@ -520,18 +518,24 @@ pub(crate) fn assert_claim_staker(claimer: AccountId, contract_id: &MockSmartCon
 
     let final_state_current_era = MemorySnapshot::all(current_era, contract_id, claimer);
 
+    // Check there is a delegate account
+    let delegate_account = RewardDelegate::<TestRuntime>::get(&claimer, &contract_id);
+
     // assert staked and free balances depending on restake check,
     assert_restake_reward(
         &init_state_current_era,
         &final_state_current_era,
         calculated_reward,
+        delegate_account,
     );
+
 
     // check for stake event if restaking is performed
     if DappsStaking::should_restake_reward(
         init_state_current_era.ledger.reward_destination,
         init_state_current_era.dapp_info.state,
         init_state_current_era.staker_info.latest_staked_value(),
+        delegate_account,
     ) {
         // There should be at least 2 events, Reward and BondAndStake.
         // if there's less, panic is acceptable
@@ -575,17 +579,105 @@ pub(crate) fn assert_claim_staker(claimer: AccountId, contract_id: &MockSmartCon
     );
 }
 
+// TODO: add tests for claim staker with delegate
+pub(crate) fn assert_claim_staker_with_delegate(claimer: AccountId, delegated_account: AccountId, contract_id: &MockSmartContract<AccountId>) {
+    let (claim_era, _) = DappsStaking::staker_info(&claimer, contract_id).claim();
+    let current_era = DappsStaking::current_era();
+
+    //clean up possible leftover events
+    System::reset_events();
+
+    let init_state_claim_era = MemorySnapshot::all(claim_era, contract_id, claimer);
+    let init_state_current_era = MemorySnapshot::all(current_era, contract_id, claimer);
+
+    let init_state_delegate_claim_era = MemorySnapshot::all(claim_era, contract_id, delegated_account);
+
+    // Calculate contract portion of the reward
+    let (_, stakers_joint_reward) = DappsStaking::dev_stakers_split(
+        &init_state_claim_era.contract_info,
+        &init_state_claim_era.era_info,
+    );
+
+    let (claim_era, staked) = init_state_claim_era.staker_info.clone().claim();
+    assert!(claim_era > 0); // Sanity check - if this fails, method is being used incorrectly
+
+    // Cannot claim rewards post unregister era, this indicates a bug!
+    if let DAppState::Unregistered(unregistered_era) = init_state_claim_era.dapp_info.state {
+        assert!(unregistered_era > claim_era);
+    }
+
+    let calculated_reward =
+        Perbill::from_rational(staked, init_state_claim_era.contract_info.total)
+            * stakers_joint_reward;
+    let issuance_before_claim = <TestRuntime as Config>::Currency::total_issuance();
+
+    assert_ok!(DappsStaking::claim_staker(
+        Origin::signed(claimer),
+        contract_id.clone(),
+    ));
+
+    let final_state_current_era = MemorySnapshot::all(current_era, contract_id, claimer);
+
+    let final_state_delegate_current_era = MemorySnapshot::all(current_era, contract_id, delegated_account);
+
+    // Check there is a delegate account
+    let delegate_account = RewardDelegate::<TestRuntime>::get(&claimer, &contract_id);
+
+    // assert staked and free balances depending on restake check,
+    assert_delegate_reward(
+        &init_state_current_era,
+        &final_state_current_era,
+        &init_state_delegate_claim_era,
+        &final_state_delegate_current_era,
+        calculated_reward,
+        delegate_account,
+    );
+
+    // last event should be Reward, regardless of restaking
+    System::assert_last_event(mock::Event::DappsStaking(Event::Reward(
+        delegated_account,
+         contract_id.clone(),
+         claim_era,
+         calculated_reward,
+    )));
+
+    let (new_era, _) = final_state_current_era.staker_info.clone().claim();
+    if final_state_current_era.staker_info.is_empty() {
+        assert!(new_era.is_zero());
+        assert!(!GeneralStakerInfo::<TestRuntime>::contains_key(
+            &claimer,
+            contract_id
+        ));
+    } else {
+        assert!(new_era > claim_era);
+    }
+    assert!(new_era.is_zero() || new_era > claim_era);
+
+    // Claim shouldn't mint new tokens, instead it should just transfer from the dapps staking pallet account
+    let issuance_after_claim = <TestRuntime as Config>::Currency::total_issuance();
+    assert_eq!(issuance_before_claim, issuance_after_claim);
+
+    // Old `claim_era` contract info should never be changed
+    let final_state_claim_era = MemorySnapshot::all(claim_era, contract_id, claimer);
+    assert_eq!(
+        init_state_claim_era.contract_info,
+        final_state_claim_era.contract_info
+    );
+}
+
 // assert staked and locked states depending on should_restake_reward
 // returns should_restake_reward result so further checks can be made
 fn assert_restake_reward(
     init_state_current_era: &MemorySnapshot,
     final_state_current_era: &MemorySnapshot,
     reward: Balance,
+    delegate_account: Option<AccountId>,
 ) {
     if DappsStaking::should_restake_reward(
         init_state_current_era.ledger.reward_destination,
         init_state_current_era.dapp_info.state,
         init_state_current_era.staker_info.latest_staked_value(),
+        delegate_account,
     ) {
         // staked values should increase
         assert_eq!(
@@ -604,6 +696,76 @@ fn assert_restake_reward(
             init_state_current_era.contract_info.total + reward,
             final_state_current_era.contract_info.total
         );
+    } else {
+        // staked values should remain the same, and free balance increase
+        assert_eq!(
+            init_state_current_era.free_balance + reward,
+            final_state_current_era.free_balance
+        );
+        assert_eq!(
+            init_state_current_era.era_info.staked,
+            final_state_current_era.era_info.staked
+        );
+        assert_eq!(
+            init_state_current_era.era_info.locked,
+            final_state_current_era.era_info.locked
+        );
+        assert_eq!(
+            init_state_current_era.contract_info,
+            final_state_current_era.contract_info
+        );
+    }
+}
+
+fn assert_delegate_reward(
+    init_state_current_era: &MemorySnapshot,
+    final_state_current_era: &MemorySnapshot,
+    init_state_delegate_current_era: &MemorySnapshot,
+    final_state_delegate_current_era: &MemorySnapshot,
+    reward: Balance,
+    delegate_account: Option<AccountId>,
+) {
+    if DappsStaking::should_restake_reward(
+        init_state_current_era.ledger.reward_destination,
+        init_state_current_era.dapp_info.state,
+        init_state_current_era.staker_info.latest_staked_value(),
+        delegate_account,
+    ) {
+        // staked values should increase
+        assert_eq!(
+            init_state_current_era.staker_info.latest_staked_value() + reward,
+            final_state_current_era.staker_info.latest_staked_value()
+        );
+        assert_eq!(
+            init_state_current_era.era_info.staked + reward,
+            final_state_current_era.era_info.staked
+        );
+        assert_eq!(
+            init_state_current_era.era_info.locked + reward,
+            final_state_current_era.era_info.locked
+        );
+        assert_eq!(
+            init_state_current_era.contract_info.total + reward,
+            final_state_current_era.contract_info.total
+        );
+    } else if delegate_account != None {
+        
+         assert_eq!(
+             init_state_delegate_current_era.free_balance + reward,
+             final_state_delegate_current_era.free_balance
+           );
+        // assert_eq!(
+        //     init_state_current_era.era_info.staked,
+        //     final_state_current_era.era_info.staked
+        // );
+        // assert_eq!(
+        //     init_state_current_era.era_info.locked,
+        //     final_state_current_era.era_info.locked
+        // );
+        // assert_eq!(
+        //     init_state_current_era.contract_info,
+        //     final_state_current_era.contract_info
+        // );
     } else {
         // staked values should remain the same, and free balance increase
         assert_eq!(

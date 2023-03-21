@@ -2172,3 +2172,76 @@ pub fn set_contract_stake_info() {
         );
     })
 }
+
+#[test]
+fn claim_with_delegate_account() {
+    ExternalityBuilder::build().execute_with(|| {
+        initialize_first_block();
+
+        let first_developer = 1;
+        let second_developer = 2;
+        let first_staker = 3;
+        let second_staker = 4;
+        let first_contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+        let second_contract_id = MockSmartContract::Evm(H160::repeat_byte(0x02));
+
+        let start_era = DappsStaking::current_era();
+
+        // Prepare a scenario with different stakes
+
+        assert_register(first_developer, &first_contract_id);
+        assert_register(second_developer, &second_contract_id);
+        assert_bond_and_stake(first_staker, &first_contract_id, 100);
+        assert_bond_and_stake(second_staker, &first_contract_id, 45);
+
+        // Just so ratio isn't 100% in favor of the first contract
+        assert_bond_and_stake(first_staker, &second_contract_id, 33);
+        assert_bond_and_stake(second_staker, &second_contract_id, 22);
+
+        let eras_advanced = 3;
+        advance_to_era(start_era + eras_advanced);
+
+        for x in 0..eras_advanced.into() {
+            assert_bond_and_stake(first_staker, &first_contract_id, 20 + x * 3);
+            assert_bond_and_stake(second_staker, &first_contract_id, 5 + x * 5);
+            advance_to_era(DappsStaking::current_era() + 1);
+        }
+
+        // Set reward destination to free balance
+        assert_ok!(DappsStaking::set_reward_destination(
+            Origin::signed(first_staker),
+            RewardDestination::FreeBalance,
+        ));
+
+        // Delegate first staker to second staker
+        assert_ok!(DappsStaking::set_reward_delegate(
+            Origin::signed(first_staker),
+            first_staker,
+            first_contract_id,
+            second_staker,
+        ));
+
+        // Ensure that all past eras can be claimed
+        let current_era = DappsStaking::current_era();
+        for era in start_era..current_era {
+            assert_claim_staker_with_delegate(first_staker, second_staker, &first_contract_id);
+            assert_claim_dapp(&first_contract_id, era);
+            assert_claim_staker(second_staker, &first_contract_id);
+        }
+
+        // Shouldn't be possible to claim current era.
+        // Also, previous claim calls should have claimed everything prior to current era.
+        assert_noop!(
+            DappsStaking::claim_staker(Origin::signed(first_staker), first_contract_id.clone()),
+            Error::<TestRuntime>::EraOutOfBounds
+        );
+        assert_noop!(
+            DappsStaking::claim_dapp(
+                Origin::signed(first_developer),
+                first_contract_id,
+                current_era
+            ),
+            Error::<TestRuntime>::EraOutOfBounds
+        );
+    })
+}

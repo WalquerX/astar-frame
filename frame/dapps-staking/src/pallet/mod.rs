@@ -752,8 +752,7 @@ pub mod pallet {
             let (era, staked) = staker_info.claim();
             ensure!(staked > Zero::zero(), Error::<T>::NotStakedContract);
 
-            let dapp_info =
-                RegisteredDapps::<T>::get(&contract_id).ok_or(Error::<T>::NotOperatedContract)?;
+            let dapp_info = RegisteredDapps::<T>::get(&contract_id).ok_or(Error::<T>::NotOperatedContract)?;
 
             if let DAppState::Unregistered(unregister_era) = dapp_info.state {
                 ensure!(era < unregister_era, Error::<T>::NotOperatedContract);
@@ -763,20 +762,22 @@ pub mod pallet {
             ensure!(era < current_era, Error::<T>::EraOutOfBounds);
 
             let staking_info = Self::contract_stake_info(&contract_id, era).unwrap_or_default();
-            let reward_and_stake =
-                Self::general_era_info(era).ok_or(Error::<T>::UnknownEraReward)?;
+            let reward_and_stake = Self::general_era_info(era).ok_or(Error::<T>::UnknownEraReward)?;
 
-            let (_, stakers_joint_reward) =
-                Self::dev_stakers_split(&staking_info, &reward_and_stake);
-            let staker_reward =
-                Perbill::from_rational(staked, staking_info.total) * stakers_joint_reward;
+            let (_, stakers_joint_reward) = Self::dev_stakers_split(&staking_info, &reward_and_stake);
+            
+            let staker_reward = Perbill::from_rational(staked, staking_info.total) * stakers_joint_reward;
 
             let mut ledger = Self::ledger(&staker);
+
+            // Check there is a delegate account
+            let delegate_account = RewardDelegate::<T>::get(&staker, &contract_id);
 
             let should_restake_reward = Self::should_restake_reward(
                 ledger.reward_destination,
                 dapp_info.state,
                 staker_info.latest_staked_value(),
+                delegate_account,
             );
 
             if should_restake_reward {
@@ -1312,10 +1313,12 @@ pub mod pallet {
             reward_destination: RewardDestination,
             dapp_state: DAppState,
             latest_staked_value: BalanceOf<T>,
+            delegate_account: Option<T::AccountId>,
         ) -> bool {
             reward_destination == RewardDestination::StakeBalance
                 && dapp_state == DAppState::Registered
                 && latest_staked_value > Zero::zero()
+                && delegate_account.is_none()
         }
 
         /// Calculate reward split between developer and stakers.
