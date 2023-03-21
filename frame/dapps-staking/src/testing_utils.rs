@@ -579,7 +579,6 @@ pub(crate) fn assert_claim_staker(claimer: AccountId, contract_id: &MockSmartCon
     );
 }
 
-// TODO: add tests for claim staker with delegate
 pub(crate) fn assert_claim_staker_with_delegate(claimer: AccountId, delegated_account: AccountId, contract_id: &MockSmartContract<AccountId>) {
     let (claim_era, _) = DappsStaking::staker_info(&claimer, contract_id).claim();
     let current_era = DappsStaking::current_era();

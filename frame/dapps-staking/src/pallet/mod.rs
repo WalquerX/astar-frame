@@ -1017,8 +1017,15 @@ pub mod pallet {
             Ok(().into())
         }
 
-        // TODO: handle case when auto restaking is enabled
-        // TODO: handle case when staker wants to regain control of their stake rewards
+        // TODO: benchmark this call
+        /// Used to set reward delegate for staker rewards.
+        /// 
+        /// The caller must be the staker or the current delegate.
+        /// Reward delegation will only apply when RewardDestination of the staker is set to free balance.
+        /// 
+        /// - `staker`: account id of the staker. 
+        /// - `contract_id`: smart contract id.
+        /// - `new_delegate`: account id of the new delegate.
         #[pallet::weight(0)]
         pub fn set_reward_delegate(
             origin: OriginFor<T>,
@@ -1059,7 +1066,11 @@ pub mod pallet {
             Ok(())
         }
 
-        // Function for the staker to revoke their reward delegation
+        /// Function for the staker to revoke their reward delegation
+        /// 
+        /// The caller must be the staker.
+        /// 
+        /// - `contract_id`: smart contract id.
         #[pallet::weight(0)]
         pub fn revoke_reward_delegate(
             origin: OriginFor<T>,
